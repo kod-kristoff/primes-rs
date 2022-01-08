@@ -17,6 +17,19 @@ impl<D: AsRef<[u8]>> IntSet<D> {
         BigEndian::write_u32(&mut buf, n);
         self.0.contains_key(buf)
     }
+
+    pub fn range(&self, start: u32, end: u32) -> fst::raw::Stream<'_> {
+        use fst::IntoStreamer;
+        let (mut bstart, mut bend) = ([0; 4], [0; 4]);
+        BigEndian::write_u32(&mut bstart, start);
+        BigEndian::write_u32(&mut bend, end);
+        self.0.range().ge(bstart).le(bend).into_stream()
+    }
+
+    #[inline]
+    pub fn size(&self) -> usize {
+        self.0.size()
+    }
 }
 
 pub struct IntSetBuilder<W: io::Write>(fst::SetBuilder<W>);

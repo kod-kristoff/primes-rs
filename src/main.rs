@@ -1,4 +1,6 @@
 use std::{fs, io};
+
+use byteorder::{BigEndian, ByteOrder};
 use clap::{AppSettings, Parser};
 use log::LevelFilter;
 
@@ -40,6 +42,16 @@ enum Commands {
         /// the number to test if it is prime
         num: u32,
     },
+    /// print a range from the prime transducer
+    #[clap(setting(AppSettings::ArgRequiredElseHelp))]
+    Range {
+        /// the file to read the transducer from
+        file: String,
+        /// the lower limit
+        low: u32,
+        /// the higher limit
+        high: u32,
+    },
 }
 fn try_main(args: Args) -> Result<()> {
 //    let log_level = if args.quiet() {
@@ -51,20 +63,17 @@ fn try_main(args: Args) -> Result<()> {
 //    } else {
 //        LevelFilter::Warn
 //    };
-    let log_level = LevelFilter::Trace;
+    let log_level = LevelFilter::Info;
     env_logger::builder()
         .filter_level(log_level)
         .format_timestamp(None)
         .init();
 
     log::debug!("args = {:?}", args);
-    // println!("Using file '{}' as input", args.input());
     match args.command {
         Commands::Init{ file, limit } => {
-            log::trace!("init file={}, limit={}", file, limit);
 
             let primes = sieve(limit);
-            log::trace!("primes = {:?}", primes);
             log::info!("# primes: {}, size: {} bytes", primes.len(), primes.len() * 4);
             let wtr = io::BufWriter::new(fs::File::create(file)?);
             let mut builder = IntSetBuilder::new(wtr)?;
@@ -76,13 +85,25 @@ fn try_main(args: Args) -> Result<()> {
             builder.finish()?;
         },
         Commands::Check{ file, num } => {
-            log::trace!("check if {} is prime", num);
-            let primes = IntSet::new(fs::read(file)?)?;
+            let primes = IntSet::new(fs::read(&file)?)?;
+            log::info!("Loaded fst from '{}': {} bytes", file, primes.size());
 
             match primes.contains(num) {
                 true => println!("{} is a prime", num),
                 false => println!("{} is not a prime", num),
             };
+        },
+        Commands::Range{ file, low, high } => {
+            use fst::Streamer;
+            let primes = IntSet::new(fs::read(&file)?)?;
+            log::info!("Loaded fst from '{}': {} bytes", file, primes.size());
+            println!("Primes between {} and {}:", low, high);
+            let mut stream = primes.range(low, high);
+            while let Some((key, _)) = stream.next() {
+                let n = BigEndian::read_u32(&key);
+                println!("{}", n);
+            }
+
         }
     };
     Ok(())
